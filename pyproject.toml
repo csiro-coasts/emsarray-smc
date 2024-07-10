@@ -3,3 +3,37 @@ requires = [
 	"setuptools >= 35.0.2",
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "emsarray_smc"
+version = "0.3.0"
+description = "Support for spherical multiple-cell geometry in emsarray"
+authors = [
+	{name = "Coastal Environmental Modelling team, Oceans and Atmosphere, CSIRO", email = "coasts@csiro.au"},
+]
+license = {file = "LICENCE"}
+dependencies = [
+	"emsarray >= 0.7.0",
+]
+
+dynamic = ["readme"]
+
+[project.urls]
+Source = "https://github.com/csiro-coasts/emsarray-smc/"
+
+[project.entry-points."emsarray.conventions"]
+SMC = "emsarray_smc:SMC"
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"], content-type = "text/markdown"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+	"error",
+	"ignore:numpy.ndarray size changed:RuntimeWarning",
+]
+
+[tool.isort]
+multi_line_output = 5
+known_first_party = "emsarray,tests"
