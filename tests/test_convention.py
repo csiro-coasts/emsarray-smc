@@ -68,18 +68,18 @@ def test_ravel_index(
     assert ds.ems.ravel_index((SMCGridKind.cell, 10)) == 10
 
 
-def test_unravel_index(
+def test_wind_index(
     datasets: pathlib.Path,
 ):
     ds = xarray.open_dataset(datasets / 'smc.nc')
-    assert ds.ems.unravel_index(10) == (SMCGridKind.cell, 10)
+    assert ds.ems.wind_index(10) == (SMCGridKind.cell, 10)
 
 
 def test_grid_kinds(
     datasets: pathlib.Path,
 ):
     ds = xarray.open_dataset(datasets / 'smc.nc')
-    assert ds.ems.grid_kinds == [SMCGridKind.cell]
+    assert ds.ems.grid_kinds == frozenset([SMCGridKind.cell])
 
 
 def test_default_grid_kind(
@@ -105,19 +105,22 @@ def test_get_grid_kind_and_size_no_match(
         ds.ems.get_grid_kind_and_size(ds['time'])
 
 
-def test_make_linear(
+def test_ravel(
     datasets: pathlib.Path,
 ):
     ds = xarray.open_dataset(datasets / 'smc.nc')
-    xarray.testing.assert_equal(ds.ems.make_linear(ds['foo']), ds['foo'])
+    xarray.testing.assert_equal(
+        ds.ems.ravel(ds['foo']),
+        xarray.DataArray(ds['foo'].values, dims=['index']),
+    )
 
 
-def test_make_linear_no_match(
+def test_ravel_no_match(
     datasets: pathlib.Path,
 ):
     ds = xarray.open_dataset(datasets / 'smc.nc')
     with pytest.raises(ValueError):
-        ds.ems.make_linear(ds['time'])
+        ds.ems.ravel(ds['time'])
 
 
 def test_get_selector_for_index(

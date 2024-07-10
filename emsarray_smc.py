@@ -1,12 +1,14 @@
 import dataclasses
+from collections.abc import Hashable
 from enum import Enum
 from functools import cached_property
-from typing import Dict, Hashable, List, Optional, Tuple
+from typing import Sequence
 
 import numpy as np
 import shapely
 import xarray as xr
-from emsarray.conventions import Convention, Specificity
+from emsarray import utils
+from emsarray.conventions import DimensionConvention, Specificity
 from emsarray.exceptions import ConventionViolationError
 from emsarray.types import Pathish
 from shapely.geometry.base import BaseGeometry
@@ -16,7 +18,7 @@ class SMCGridKind(str, Enum):
     cell = 'cell'
 
 
-SMCIndex = Tuple[SMCGridKind, int]
+SMCIndex = tuple[SMCGridKind, int]
 
 
 @dataclasses.dataclass
@@ -30,11 +32,11 @@ class SMCTopology:
         self,
         dataset: xr.Dataset,
         *,
-        cell_dimension: Optional[Hashable] = None,
-        longitude: Optional[Hashable] = None,
-        latitude: Optional[Hashable] = None,
-        longitude_cell_size_factor: Optional[Hashable] = None,
-        latitude_cell_size_factor: Optional[Hashable] = None,
+        cell_dimension: Hashable | None = None,
+        longitude: Hashable | None = None,
+        latitude: Hashable | None = None,
+        longitude_cell_size_factor: Hashable | None = None,
+        latitude_cell_size_factor: Hashable | None = None,
     ):
         """
         Construct a new :class:`CFGridTopology` instance for a dataset.
@@ -76,7 +78,7 @@ class SMCTopology:
     @property
     def cell_count(self) -> int:
         """The size of the cell dimension"""
-        return self.dataset.dims[self.cell_dimension]
+        return self.dataset.sizes[self.cell_dimension]
 
     @cached_property
     def longitude_name(self) -> Hashable:
@@ -160,15 +162,15 @@ class SMCTopology:
     @property
     def longitude_cell_size_factor(self) -> xr.DataArray:
         """The longitude cell size variable"""
-        return self.dataset[self.longitude_cell_size_name]
+        return self.dataset[self.longitude_cell_size_factor_name]
 
     @property
     def latitude_cell_size_factor(self) -> xr.DataArray:
         """The latitude cell size variable"""
-        return self.dataset[self.latitude_cell_size_name]
+        return self.dataset[self.latitude_cell_size_factor_name]
 
 
-class SMC(Convention[SMCGridKind, int]):
+class SMC(DimensionConvention[SMCGridKind, SMCIndex]):
     """
     Spherical multiple-cell (SMC) datasets consist of non overlapping,
     axis aligned, rectangular cells of varying sizes.
@@ -182,14 +184,14 @@ class SMC(Convention[SMCGridKind, int]):
         self,
         dataset: xr.Dataset,
         *,
-        topology: Optional[SMCTopology] = None,
+        topology: SMCTopology | None = None,
     ):
         super().__init__(dataset)
         if topology is not None:
             self.topology = topology
 
     @classmethod
-    def check_dataset(cls, dataset: xr.Dataset) -> Optional[int]:
+    def check_dataset(cls, dataset: xr.Dataset) -> int | None:
         # The following dataset attributes are required to identify this as an
         # SMC dataset
         required_attrs = [
@@ -210,49 +212,35 @@ class SMC(Convention[SMCGridKind, int]):
     def topology(self) -> SMCTopology:
         return SMCTopology(self.dataset)
 
-    def ravel_index(self, index: SMCIndex) -> int:
-        _kind, linear_index = index
-        return linear_index
+    @cached_property
+    def grid_kinds(self) -> frozenset[SMCGridKind]:
+        return frozenset(SMCGridKind)
 
-    def unravel_index(
-        self,
-        linear_index: int,
-        grid_kind: Optional[SMCGridKind] = None,
-    ) -> SMCIndex:
-        return (SMCGridKind.cell, linear_index)
+    @cached_property
+    def grid_dimensions(self) -> dict[SMCGridKind, Sequence[Hashable]]:
+        return {SMCGridKind.cell: (self.topology.cell_dimension,)}
 
-    @property
-    def grid_kinds(self) -> List[SMCGridKind]:
-        return list(SMCGridKind)
-
-    @property
+    @cached_property
     def default_grid_kind(self) -> SMCGridKind:
         return SMCGridKind.cell
 
-    def get_grid_kind_and_size(
-        self, data_array: xr.DataArray,
-    ) -> Tuple[SMCGridKind, int]:
-        if self.topology.cell_dimension not in data_array.dims:
-            raise ValueError("Unknown grid kind")
-        return (SMCGridKind.cell, self.topology.cell_count)
+    def unpack_index(self, index: SMCIndex) -> tuple[SMCGridKind, Sequence[int]]:
+        return SMCGridKind.cell, [index[1]]
 
-    def make_linear(self, data_array: xr.DataArray) -> xr.DataArray:
-        kind, size = self.get_grid_kind_and_size(data_array)
-        if kind is not SMCGridKind.cell:
-            raise ValueError("Unknown grid kind")
+    def pack_index(self, grid_kind: SMCGridKind, indexes: Sequence[int]) -> SMCIndex:
+        return (grid_kind, indexes[0])
 
-        # The dataset is already linear
-        return data_array
-
-    def selector_for_index(self, index: SMCIndex) -> Dict[Hashable, int]:
-        _kind, linear_index = index
-        return {self.topology.cell_dimension: linear_index}
+    def get_all_geometry_names(self) -> list[Hashable]:
+        return [
+            self.topology.longitude_name,
+            self.topology.latitude_name,
+            self.topology.longitude_cell_size_factor_name,
+            self.topology.latitude_cell_size_factor_name,
+        ]
 
     def drop_geometry(self) -> xr.Dataset:
         # Drop geometry variables
-        dataset = self.dataset.drop_vars([
-            'longitude', 'latitude', 'cx', 'cy',
-        ])
+        dataset = super().drop_geometry()
 
         # Drop geometry attributes
         required_attrs = [
@@ -269,6 +257,7 @@ class SMC(Convention[SMCGridKind, int]):
         return dataset
 
     @cached_property
+    @utils.timed_func
     def polygons(self) -> np.ndarray:
         """
         SMC polygons are lat/lon boxes centred at a point, with a size given by
@@ -282,10 +271,10 @@ class SMC(Convention[SMCGridKind, int]):
         lon_size = float(self.dataset.attrs['base_lon_size'])
         lat_size = float(self.dataset.attrs['base_lat_size'])
 
-        lons = self.dataset['longitude'].values
-        lats = self.dataset['latitude'].values
-        cx = self.dataset['cx'].values
-        cy = self.dataset['cy'].values
+        lons = self.topology.longitude.values
+        lats = self.topology.latitude.values
+        cx = self.topology.longitude_cell_size_factor.values
+        cy = self.topology.latitude_cell_size_factor.values
 
         # Cells have size (cx * lon_size, cy * lat_size),
         # centred at (longitde, latitude)
@@ -316,17 +305,14 @@ class SMC(Convention[SMCGridKind, int]):
     ) -> xr.Dataset:
         if buffer > 0:
             raise ValueError("Buffering SMC datasets is not yet implemented")
-
-        spatial_index = self.spatial_index
-
-        included_indices = [
-            hit.linear_index
-            for polygon, hit in spatial_index.query(clip_geometry)
-            if polygon.intersects(clip_geometry)
-            and not polygon.touches(clip_geometry)
+        included_indexes = [
+            index
+            for index in self.strtree.query(clip_geometry)
+            if self.polygons[index].intersects(clip_geometry)
+            and not self.polygons[index].touches(clip_geometry)
         ]
         mask = np.zeros(self.topology.cell_count, dtype=bool)
-        mask[included_indices] = True
+        mask[included_indexes] = True
 
         return xr.Dataset(
             data_vars={
