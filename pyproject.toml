@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "emsarray_smc"
-version = "0.3.0"
+version = "0.4.0"
 description = "Support for spherical multiple-cell geometry in emsarray"
 authors = [
 	{name = "Coastal Environmental Modelling team, Oceans and Atmosphere, CSIRO", email = "coasts@csiro.au"},
