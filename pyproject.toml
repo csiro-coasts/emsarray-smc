@@ -11,7 +11,8 @@ description = "Support for spherical multiple-cell geometry in emsarray"
 authors = [
 	{name = "Coastal Environmental Modelling team, Oceans and Atmosphere, CSIRO", email = "coasts@csiro.au"},
 ]
-license = {file = "LICENCE"}
+license = "BSD-3-Clause"
+license-files = ["LICENCE"]
 dependencies = [
 	"emsarray >= 0.8.0",
 ]
