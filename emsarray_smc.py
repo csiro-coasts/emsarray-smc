@@ -256,9 +256,7 @@ class SMC(DimensionConvention[SMCGridKind, SMCIndex]):
 
         return dataset
 
-    @cached_property
-    @utils.timed_func
-    def polygons(self) -> np.ndarray:
+    def _make_polygons(self) -> np.ndarray:
         """
         SMC polygons are lat/lon boxes centred at a point, with a size given by
         cx/cy and the base cell size.
