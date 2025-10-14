@@ -18,6 +18,11 @@ dependencies = [
 
 dynamic = ["readme"]
 
+[project.optional-dependencies]
+testing = [
+	"pytest"
+]
+
 [project.urls]
 Source = "https://github.com/csiro-coasts/emsarray-smc/"
 
