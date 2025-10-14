@@ -13,7 +13,7 @@ authors = [
 ]
 license = {file = "LICENCE"}
 dependencies = [
-	"emsarray >= 0.7.0",
+	"emsarray >= 0.8.0",
 ]
 
 dynamic = ["readme"]
