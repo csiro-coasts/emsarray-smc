@@ -1,4 +1,5 @@
 import dataclasses
+import math
 from collections.abc import Hashable
 from enum import Enum
 from functools import cached_property
@@ -274,27 +275,40 @@ class SMC(DimensionConvention[SMCGridKind, SMCIndex]):
         cx = self.topology.longitude_cell_size_factor.values
         cy = self.topology.latitude_cell_size_factor.values
 
-        # Cells have size (cx * lon_size, cy * lat_size),
-        # centred at (longitde, latitude)
-        lon_cell_size = lon_size * cx / 2
-        lat_cell_size = lat_size * cy / 2
-        lon_min = lons - lon_cell_size
-        lon_max = lons + lon_cell_size
-        lat_min = lats - lat_cell_size
-        lat_max = lats + lat_cell_size
+        chunk_size = 10000
+        count = self.topology.cell_count
+        chunk_count = math.ceil(count / chunk_size)
+        out = np.empty(shape=count, dtype=object)
+        for chunk_index in range(chunk_count):
+            chunk_slice = slice(chunk_index * chunk_size, min(count, (chunk_index + 1) * chunk_size))
 
-        # points is an array of shape (cell_count, 5, 2),
-        # where each row is a set of five points defining the cell polygon.
-        points = np.array([
-            [lon_min, lat_min],
-            [lon_max, lat_min],
-            [lon_max, lat_max],
-            [lon_min, lat_max],
-            [lon_min, lat_min],
-        ], dtype=lons.dtype)
-        points = np.transpose(points, (2, 0, 1))
+            chunk_cx = cx[chunk_slice]
+            chunk_cy = cx[chunk_slice]
+            chunk_lons = lons[chunk_slice]
+            chunk_lats = lats[chunk_slice]
 
-        return shapely.polygons(points)
+            # Cells have size (cx * lon_size, cy * lat_size),
+            # centred at (longitde, latitude)
+            lon_cell_size = lon_size * chunk_cx / 2
+            lat_cell_size = lat_size * chunk_cy / 2
+            lon_min = chunk_lons - lon_cell_size
+            lon_max = chunk_lons + lon_cell_size
+            lat_min = chunk_lats - lat_cell_size
+            lat_max = chunk_lats + lat_cell_size
+
+            # points is an array of shape (cell_count, 5, 2),
+            # where each row is a set of five points defining the cell polygon.
+            points = np.array([
+                [lon_min, lat_min],
+                [lon_max, lat_min],
+                [lon_max, lat_max],
+                [lon_min, lat_max],
+            ], dtype=lons.dtype)
+            points = points.transpose((2, 0, 1))
+
+            shapely.polygons(points, out=out[chunk_slice])
+
+        return out
 
     def make_clip_mask(
         self,
